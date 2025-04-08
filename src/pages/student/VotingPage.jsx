@@ -1,120 +1,173 @@
-import React, { useState, useEffect } from "react";
+"use client";
+
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import StudentLayout from "../../components/layouts/StudentLayout";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
-
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: "https://online-voting-br3j.onrender.com",
-  headers: {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-  },
-});
-
-// Add request interceptor to handle auth token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem("token");
-      window.location.href = "/login";
-    }
-    return Promise.reject(error);
-  }
-);
+import {
+  ExclamationTriangleIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+} from "@heroicons/react/24/outline";
 
 const VotingPage = () => {
   const { electionId } = useParams();
   const navigate = useNavigate();
   const [election, setElection] = useState(null);
-  const [candidates, setCandidates] = useState([]);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
-  const [hasVoted, setHasVoted] = useState(false);
+  const [candidatesByPosition, setCandidatesByPosition] = useState({});
+  const [selectedCandidates, setSelectedCandidates] = useState({});
+  const [votedPositions, setVotedPositions] = useState([]);
+  const [availablePositions, setAvailablePositions] = useState([]);
+  const [currentPosition, setCurrentPosition] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [voteStatus, setVoteStatus] = useState({
+    hasVoted: false,
+    allPositionsVoted: false,
+  });
+  const API_URL = "https://online-voting-br3j.onrender.com";
 
   useEffect(() => {
     const fetchElectionData = async () => {
       try {
+        setLoading(true);
+        const token = localStorage.getItem("token");
+
         // Check if user has already voted
-        const userVotesRes = await api.get("/user/votes");
-        const hasVotedInElection = userVotesRes.data.some(
-          (vote) => vote.electionId === electionId
+        const voteCheckRes = await axios.get(
+          `${API_URL}/votes/check/${electionId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
-        setHasVoted(hasVotedInElection);
 
-        // Fetch election details
-        const [electionRes, candidatesRes] = await Promise.all([
-          api.get(`/elections/${electionId}`),
-          api.get(`/candidates/election/${electionId}`),
-        ]);
+        const {
+          hasVoted,
+          votedPositions,
+          availablePositions,
+          remainingPositions,
+        } = voteCheckRes.data;
 
-        setElection(electionRes.data);
-        setCandidates(candidatesRes.data);
-      } catch (error) {
-        console.error("Error fetching election data:", error);
-        let errorMessage = "Failed to load election data";
+        setVotedPositions(votedPositions || []);
+        setAvailablePositions(availablePositions || []);
 
-        if (error.response?.status === 404) {
-          errorMessage = "Election not found";
-        } else if (error.response?.status === 403) {
-          errorMessage = "You don't have access to this election";
-        } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
+        // Set the current position to the first remaining position
+        if (remainingPositions && remainingPositions.length > 0) {
+          setCurrentPosition(remainingPositions[0]);
         }
 
-        setError(errorMessage);
+        setVoteStatus({
+          hasVoted: hasVoted,
+          allPositionsVoted: remainingPositions
+            ? remainingPositions.length === 0
+            : false,
+        });
+
+        // Fetch election details
+        const electionRes = await axios.get(
+          `${API_URL}/elections/${electionId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        // Fetch candidates for this election
+        const candidatesRes = await axios.get(
+          `${API_URL}/candidates/election/${electionId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        setElection(electionRes.data);
+
+        // Group candidates by position
+        const candidatesByPos = {};
+        if (Array.isArray(candidatesRes.data)) {
+          candidatesRes.data.forEach((candidate) => {
+            if (!candidatesByPos[candidate.position]) {
+              candidatesByPos[candidate.position] = [];
+            }
+            candidatesByPos[candidate.position].push(candidate);
+          });
+        }
+
+        setCandidatesByPosition(candidatesByPos);
+      } catch (error) {
+        console.error("Error fetching election data:", error);
+        setError(
+          error.response?.data?.message || "Failed to load election data"
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchElectionData();
-  }, [electionId]);
+  }, [electionId, API_URL]);
 
   const handleVote = async () => {
-    if (!selectedCandidate) {
-      toast.error("Please select a candidate");
+    if (!selectedCandidates[currentPosition]) {
+      toast.error(`Please select a candidate for ${currentPosition}`);
       return;
     }
 
     setSubmitting(true);
 
     try {
-      await api.post("/vote", {
-        electionId,
-        candidateId: selectedCandidate,
-      });
+      const token = localStorage.getItem("token");
+      await axios.post(
+        `${API_URL}/votes`,
+        {
+          electionId,
+          candidateId: selectedCandidates[currentPosition],
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
-      toast.success("Your vote has been recorded successfully!");
-      setHasVoted(true);
+      toast.success(
+        `Your vote for ${currentPosition} has been recorded successfully!`
+      );
+
+      // Update voted positions
+      const updatedVotedPositions = [...votedPositions, currentPosition];
+      setVotedPositions(updatedVotedPositions);
+
+      // Update remaining positions
+      const updatedRemainingPositions = availablePositions.filter(
+        (pos) => !updatedVotedPositions.includes(pos)
+      );
+
+      // Check if all positions have been voted for
+      if (updatedRemainingPositions.length === 0) {
+        setVoteStatus({
+          hasVoted: true,
+          allPositionsVoted: true,
+        });
+        toast.success(
+          "You have successfully voted for all positions in this election!"
+        );
+      } else {
+        // Move to the next position
+        setCurrentPosition(updatedRemainingPositions[0]);
+      }
     } catch (error) {
       console.error("Error submitting vote:", error);
-      let errorMessage = "Failed to submit your vote";
-
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-
-      toast.error(errorMessage);
+      toast.error(
+        error.response?.data?.message || "Failed to submit your vote"
+      );
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePositionChange = (position) => {
+    setCurrentPosition(position);
   };
 
   const formatDate = (dateString) => {
@@ -180,9 +233,9 @@ const VotingPage = () => {
           <div className="mt-2 flex items-center text-sm text-gray-500">
             <span
               className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                election.category === "SUG"
+                election.category.toLowerCase() === "sug"
                   ? "bg-green-100 text-green-800"
-                  : election.category === "Faculty"
+                  : election.category.toLowerCase() === "faculty"
                   ? "bg-blue-100 text-blue-800"
                   : "bg-purple-100 text-purple-800"
               }`}
@@ -196,7 +249,7 @@ const VotingPage = () => {
         </div>
       </div>
 
-      {hasVoted ? (
+      {voteStatus.allPositionsVoted ? (
         <div className="mt-6 bg-green-50 border-l-4 border-green-400 p-4">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -207,10 +260,19 @@ const VotingPage = () => {
             </div>
             <div className="ml-3">
               <p className="text-sm text-green-700">
-                You have already cast your vote for this election. Thank you for
-                participating!
+                You have successfully voted for all positions in this election.
+                Thank you for participating!
               </p>
             </div>
+          </div>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => navigate("/elections")}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Back to Elections
+            </button>
           </div>
         </div>
       ) : (
@@ -219,26 +281,56 @@ const VotingPage = () => {
             <p className="text-gray-700">{election.description}</p>
           </div>
 
-          <div className="mt-8">
+          {/* Position Navigation */}
+          <div className="mt-8 border-b border-gray-200">
+            <div className="flex overflow-x-auto py-2 space-x-4">
+              {availablePositions.map((position) => (
+                <button
+                  key={position}
+                  onClick={() => handlePositionChange(position)}
+                  className={`px-4 py-2 text-sm font-medium rounded-md whitespace-nowrap ${
+                    currentPosition === position
+                      ? "bg-indigo-100 text-indigo-700"
+                      : votedPositions.includes(position)
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  {position}
+                  {votedPositions.includes(position) && (
+                    <CheckCircleIcon className="ml-1 inline-block h-4 w-4 text-green-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Current Position Voting */}
+          <div className="mt-6">
             <h2 className="text-lg font-medium text-gray-900">
-              Select a Candidate
+              Select a Candidate for {currentPosition}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
               Please review the candidates carefully before casting your vote.
             </p>
 
             <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {candidates.map((candidate) => (
+              {candidatesByPosition[currentPosition]?.map((candidate) => (
                 <div
                   key={candidate._id}
                   className={`relative rounded-lg border ${
-                    selectedCandidate === candidate._id
+                    selectedCandidates[currentPosition] === candidate._id
                       ? "border-indigo-500 ring-2 ring-indigo-500"
                       : "border-gray-300 hover:border-indigo-400"
                   } bg-white p-6 shadow-sm focus:outline-none cursor-pointer`}
-                  onClick={() => setSelectedCandidate(candidate._id)}
+                  onClick={() =>
+                    setSelectedCandidates({
+                      ...selectedCandidates,
+                      [currentPosition]: candidate._id,
+                    })
+                  }
                 >
-                  {selectedCandidate === candidate._id && (
+                  {selectedCandidates[currentPosition] === candidate._id && (
                     <div className="absolute top-4 right-4">
                       <CheckCircleIcon
                         className="h-6 w-6 text-indigo-600"
@@ -276,21 +368,52 @@ const VotingPage = () => {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-end">
+          {/* Voting Progress */}
+          <div className="mt-8 bg-gray-50 p-4 rounded-md">
+            <h3 className="text-sm font-medium text-gray-700">
+              Voting Progress
+            </h3>
+            <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-indigo-600 h-2.5 rounded-full"
+                style={{
+                  width: `${
+                    (votedPositions.length / availablePositions.length) * 100
+                  }%`,
+                }}
+              ></div>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {votedPositions.length} of {availablePositions.length} positions
+              voted
+            </p>
+          </div>
+
+          <div className="mt-8 flex justify-between">
             <button
               type="button"
               onClick={() => navigate("/elections")}
-              className="mr-4 inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Cancel
+              <ArrowLeftIcon
+                className="-ml-1 mr-2 h-5 w-5"
+                aria-hidden="true"
+              />
+              Back to Elections
             </button>
             <button
               type="button"
               onClick={handleVote}
-              disabled={!selectedCandidate || submitting}
+              disabled={!selectedCandidates[currentPosition] || submitting}
               className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
             >
               {submitting ? "Submitting..." : "Cast Vote"}
+              {!submitting && (
+                <ArrowRightIcon
+                  className="ml-2 -mr-1 h-5 w-5"
+                  aria-hidden="true"
+                />
+              )}
             </button>
           </div>
         </>

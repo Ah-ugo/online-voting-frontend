@@ -33,13 +33,18 @@ const Elections = () => {
     category: "",
     startDate: "",
     endDate: "",
+    facultyId: "",
+    departmentId: "",
   });
+  const [faculties, setFaculties] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const API_URL = "https://online-voting-br3j.onrender.com";
 
   useEffect(() => {
     fetchElections();
+    fetchFaculties();
   }, []);
 
   const fetchElections = async () => {
@@ -48,27 +53,52 @@ const Elections = () => {
       const token = localStorage.getItem("token");
 
       const [activeRes, upcomingRes, completedRes] = await Promise.all([
-        axios.get(`${API_URL}/admin/elections/active`, {
+        axios.get(`${API_URL}/elections/active`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        axios.get(`${API_URL}/admin/elections/upcoming`, {
+        axios.get(`${API_URL}/elections/upcoming`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        axios.get(`${API_URL}/admin/elections/completed`, {
+        axios.get(`${API_URL}/elections/completed`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
 
       setElections({
-        active: activeRes.data,
-        upcoming: upcomingRes.data,
-        completed: completedRes.data,
+        active: activeRes.data || [],
+        upcoming: upcomingRes.data || [],
+        completed: completedRes.data || [],
       });
     } catch (error) {
       console.error("Error fetching elections:", error);
       toast.error("Failed to load elections");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFaculties = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/faculties`);
+      setFaculties(response.data || []);
+    } catch (error) {
+      console.error("Error fetching faculties:", error);
+    }
+  };
+
+  const fetchDepartments = async (facultyId) => {
+    if (!facultyId) {
+      setDepartments([]);
+      return;
+    }
+
+    try {
+      const response = await axios.get(
+        `${API_URL}/departments?faculty=${facultyId}`
+      );
+      setDepartments(response.data || []);
+    } catch (error) {
+      console.error("Error fetching departments:", error);
     }
   };
 
@@ -80,7 +110,10 @@ const Elections = () => {
       category: "",
       startDate: "",
       endDate: "",
+      facultyId: "",
+      departmentId: "",
     });
+    setDepartments([]);
     setShowModal(true);
   };
 
@@ -100,14 +133,41 @@ const Elections = () => {
       category: election.category,
       startDate: formatDate(election.startDate),
       endDate: formatDate(election.endDate),
+      facultyId: election.facultyId || "",
+      departmentId: election.departmentId || "",
     });
+
+    if (election.facultyId) {
+      fetchDepartments(election.facultyId);
+    }
 
     setShowModal(true);
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+
+    if (name === "category") {
+      // Reset facultyId and departmentId when category changes
+      if (
+        value.toLowerCase() !== "faculty" &&
+        value.toLowerCase() !== "department"
+      ) {
+        setFormData({
+          ...formData,
+          [name]: value,
+          facultyId: "",
+          departmentId: "",
+        });
+      } else {
+        setFormData({ ...formData, [name]: value });
+      }
+    } else if (name === "facultyId") {
+      setFormData({ ...formData, [name]: value, departmentId: "" });
+      fetchDepartments(value);
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -116,6 +176,25 @@ const Elections = () => {
 
     try {
       const token = localStorage.getItem("token");
+
+      // Validate form data
+      if (
+        formData.category.toLowerCase() === "faculty" &&
+        !formData.facultyId
+      ) {
+        toast.error("Faculty is required for Faculty elections");
+        setSubmitting(false);
+        return;
+      }
+
+      if (
+        formData.category.toLowerCase() === "department" &&
+        !formData.departmentId
+      ) {
+        toast.error("Department is required for Department elections");
+        setSubmitting(false);
+        return;
+      }
 
       if (modalType === "create") {
         await axios.post(`${API_URL}/admin/elections`, formData, {
@@ -308,9 +387,10 @@ const Elections = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span
                               className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                election.category === "SUG"
+                                election.category.toLowerCase() === "sug"
                                   ? "bg-green-100 text-green-800"
-                                  : election.category === "Faculty"
+                                  : election.category.toLowerCase() ===
+                                    "faculty"
                                   ? "bg-blue-100 text-blue-800"
                                   : "bg-purple-100 text-purple-800"
                               }`}
@@ -431,9 +511,10 @@ const Elections = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span
                               className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                election.category === "SUG"
+                                election.category.toLowerCase() === "sug"
                                   ? "bg-green-100 text-green-800"
-                                  : election.category === "Faculty"
+                                  : election.category.toLowerCase() ===
+                                    "faculty"
                                   ? "bg-blue-100 text-blue-800"
                                   : "bg-purple-100 text-purple-800"
                               }`}
@@ -554,9 +635,10 @@ const Elections = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span
                               className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                election.category === "SUG"
+                                election.category.toLowerCase() === "sug"
                                   ? "bg-green-100 text-green-800"
-                                  : election.category === "Faculty"
+                                  : election.category.toLowerCase() ===
+                                    "faculty"
                                   ? "bg-blue-100 text-blue-800"
                                   : "bg-purple-100 text-purple-800"
                               }`}
@@ -701,6 +783,71 @@ const Elections = () => {
                             <option value="Department">Department</option>
                           </select>
                         </div>
+
+                        {/* Faculty selection (only for Faculty or Department elections) */}
+                        {(formData.category.toLowerCase() === "faculty" ||
+                          formData.category.toLowerCase() === "department") && (
+                          <div>
+                            <label
+                              htmlFor="facultyId"
+                              className="block text-sm font-medium text-gray-700"
+                            >
+                              Faculty
+                            </label>
+                            <select
+                              id="facultyId"
+                              name="facultyId"
+                              required
+                              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                              value={formData.facultyId}
+                              onChange={handleChange}
+                            >
+                              <option value="">Select Faculty</option>
+                              {faculties.map((faculty) => (
+                                <option key={faculty._id} value={faculty._id}>
+                                  {faculty.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Department selection (only for Department elections) */}
+                        {formData.category.toLowerCase() === "department" && (
+                          <div>
+                            <label
+                              htmlFor="departmentId"
+                              className="block text-sm font-medium text-gray-700"
+                            >
+                              Department
+                            </label>
+                            <select
+                              id="departmentId"
+                              name="departmentId"
+                              required
+                              disabled={!formData.facultyId}
+                              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100"
+                              value={formData.departmentId}
+                              onChange={handleChange}
+                            >
+                              <option value="">Select Department</option>
+                              {departments.map((department) => (
+                                <option
+                                  key={department._id}
+                                  value={department._id}
+                                >
+                                  {department.name}
+                                </option>
+                              ))}
+                            </select>
+                            {!formData.facultyId && (
+                              <p className="mt-1 text-xs text-gray-500">
+                                Please select a faculty first
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         <div>
                           <label
                             htmlFor="startDate"

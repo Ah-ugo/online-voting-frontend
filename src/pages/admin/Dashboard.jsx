@@ -30,12 +30,9 @@ const Dashboard = () => {
         const token = localStorage.getItem("token");
 
         // Fetch all data in a single request
-        const dashboardResponse = await axios.get(
-          `${API_URL}/admin/dashboard`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const dashboardResponse = await axios.get(`${API_URL}/admin/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
         // Set stats from the dashboard response
         setStats({
@@ -57,9 +54,12 @@ const Dashboard = () => {
           const token = localStorage.getItem("token");
 
           // Fetch elections
-          const electionsResponse = await axios.get(`${API_URL}/elections`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const electionsResponse = await axios.get(
+            `${API_URL}/admin/elections`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
 
           // Set some basic stats and recent elections
           setRecentElections(electionsResponse.data.slice(0, 5) || []);

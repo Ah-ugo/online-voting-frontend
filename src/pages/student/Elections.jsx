@@ -10,6 +10,7 @@ import {
   CheckCircleIcon,
   ArchiveBoxIcon,
 } from "@heroicons/react/24/outline";
+import toast from "react-hot-toast";
 
 function classNames(...classes) {
   return classes.filter(Boolean).join(" ");
@@ -27,6 +28,7 @@ const Elections = () => {
   useEffect(() => {
     const fetchElections = async () => {
       try {
+        setLoading(true);
         const token = localStorage.getItem("token");
 
         const [activeRes, upcomingRes, pastRes] = await Promise.all([
@@ -41,13 +43,18 @@ const Elections = () => {
           }),
         ]);
 
+        console.log("Active elections:", activeRes.data);
+        console.log("Upcoming elections:", upcomingRes.data);
+        console.log("Past elections:", pastRes.data);
+
         setElections({
-          active: activeRes.data,
-          upcoming: upcomingRes.data,
-          past: pastRes.data,
+          active: activeRes.data || [],
+          upcoming: upcomingRes.data || [],
+          past: pastRes.data || [],
         });
       } catch (error) {
         console.error("Error fetching elections:", error);
+        toast.error("Failed to load elections. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -62,12 +69,13 @@ const Elections = () => {
   };
 
   const getCategoryBadgeColor = (category) => {
-    switch (category) {
-      case "SUG":
+    const categoryLower = category?.toLowerCase() || "";
+    switch (categoryLower) {
+      case "sug":
         return "bg-green-100 text-green-800";
-      case "Faculty":
+      case "faculty":
         return "bg-blue-100 text-blue-800";
-      case "Department":
+      case "department":
         return "bg-purple-100 text-purple-800";
       default:
         return "bg-gray-100 text-gray-800";

@@ -6,6 +6,7 @@ import StudentLayout from "../../components/layouts/StudentLayout";
 import { useAuth } from "../../contexts/AuthContext";
 import { CheckCircleIcon, ClockIcon } from "@heroicons/react/24/outline";
 import axios from "axios";
+import toast from "react-hot-toast";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -18,6 +19,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true);
         const token = localStorage.getItem("token");
 
         // Fetch upcoming elections
@@ -31,15 +33,16 @@ const Dashboard = () => {
         });
 
         // Fetch voting history
-        const historyRes = await axios.get(`${API_URL}/user/votes`, {
+        const historyRes = await axios.get(`${API_URL}/votes/history`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        setUpcomingElections(upcomingRes.data);
-        setActiveElections(activeRes.data);
-        setVotingHistory(historyRes.data);
+        setUpcomingElections(upcomingRes.data || []);
+        setActiveElections(activeRes.data || []);
+        setVotingHistory(historyRes.data || []);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);
+        toast.error("Failed to load dashboard data. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -219,9 +222,10 @@ const Dashboard = () => {
                           <div className="ml-2 flex-shrink-0 flex">
                             <p
                               className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                election.category === "SUG"
+                                election.category.toLowerCase() === "sug"
                                   ? "bg-green-100 text-green-800"
-                                  : election.category === "Faculty"
+                                  : election.category.toLowerCase() ===
+                                    "faculty"
                                   ? "bg-blue-100 text-blue-800"
                                   : "bg-purple-100 text-purple-800"
                               }`}
@@ -275,7 +279,7 @@ const Dashboard = () => {
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {vote.election.title}
+                        {vote.election?.title || "Unknown Election"}
                       </p>
                       <div className="ml-2 flex-shrink-0 flex">
                         <p className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
@@ -286,7 +290,9 @@ const Dashboard = () => {
                     <div className="mt-2 sm:flex sm:justify-between">
                       <div className="sm:flex">
                         <p className="flex items-center text-sm text-gray-500">
-                          {vote.candidate.firstName} {vote.candidate.lastName}
+                          {vote.candidate?.firstName || ""}{" "}
+                          {vote.candidate?.lastName || ""}
+                          {!vote.candidate && "Unknown Candidate"}
                         </p>
                       </div>
                       <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
