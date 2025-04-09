@@ -196,15 +196,29 @@ const Elections = () => {
         return;
       }
 
+      // Create a copy of the form data to modify before submission
+      const submissionData = { ...formData };
+
+      // Convert empty strings to null for facultyId and departmentId
+      // This is the key fix for your 422 error
+      if (submissionData.facultyId === "") {
+        submissionData.facultyId = null;
+      }
+
+      if (submissionData.departmentId === "") {
+        submissionData.departmentId = null;
+      }
+
+      // Now submit with the properly formatted data
       if (modalType === "create") {
-        await axios.post(`${API_URL}/admin/elections`, formData, {
+        await axios.post(`${API_URL}/admin/elections`, submissionData, {
           headers: { Authorization: `Bearer ${token}` },
         });
         toast.success("Election created successfully");
       } else {
         await axios.put(
           `${API_URL}/admin/elections/${selectedElection._id}`,
-          formData,
+          submissionData,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
